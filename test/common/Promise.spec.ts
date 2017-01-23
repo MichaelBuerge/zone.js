@@ -55,6 +55,7 @@ describe(
         log = [];
       });
 
+      /*
       it('should pretend to be a native code', () => {
         expect(String(Promise).indexOf('[native code]') >= 0).toBe(true);
       });
@@ -378,23 +379,42 @@ describe(
               });
         });
       });
+      */
 
       describe('fetch', ifEnvSupports('fetch', function() {
-                 it('should work for text response', function(done) {
-                   testZone.run(function() {
-                     global['fetch']('/base/test/assets/sample.json').then(function(response) {
-                       const fetchZone = Zone.current;
-                       expect(fetchZone).toBe(testZone);
+          it('should work for text response', function(done) {
+            console.log('-----------TEST START--------------');
+            window['probePromise']("test start");
+            testZone.run(function() {
+             var fetchPromise = global['fetch']('/base/test/assets/sample.json');
+             fetchPromise.then(function(response) {
+               const fetchZone = Zone.current;
+               // expect(fetchZone).toBe(testZone);
+               expect(fetchZone == testZone).toBe(true);
+               console.log('YAY! fetch() kept zone')
 
-                       response.text().then(function(text) {
-                         expect(Zone.current).toBe(fetchZone);
-                         expect(text.trim()).toEqual('{"hello": "world"}');
-                         done();
-                       });
-                     });
-                   });
-                 });
+               console.log('fetchPromise.constructor: ', fetchPromise.constructor);
 
+               var textPromise = response.text();
+               textPromise.then(function(text) {
+                 console.log('--- .text() result ---')
+                 console.log('textPromise.constructor: ', textPromise.constructor);
+                 console.log('is ZoneAwarePromise: ' + (textPromise instanceof window['ZoneAwarePromise']));
+                 console.log('is native Promise: ' + (textPromise instanceof window['NativePromise']));
+                 console.log('textPromise.then: ', textPromise.then.toString())
+                 expect(text.trim()).toEqual('{"hello": "world"}');
+                 // expect(Zone.current).toBe(fetchZone);
+                 var zoneKept = Zone.current == fetchZone;
+                 console.log(
+                     'text() kept zone: ' +
+                     (zoneKept ? 'YAY!' : 'NAY. Zone FUCKED'));
+                 expect(zoneKept).toBe(true);
+                 done();
+               });
+             });
+            });
+          });
+                 /*
                  it('should work for json response', function(done) {
                    testZone.run(function() {
                      global['fetch']('/base/test/assets/sample.json').then(function(response: any) {
@@ -449,6 +469,6 @@ describe(
                      });
                    });
                  });
-
+                 */
                }));
     }));
