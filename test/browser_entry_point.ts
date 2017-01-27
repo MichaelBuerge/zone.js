@@ -8,16 +8,16 @@
 
 // List all tests here:
 import './common_tests';
-import './browser/browser.spec';
-import './browser/define-property.spec';
-import './browser/element.spec';
-import './browser/FileReader.spec';
-// import './browser/geolocation.spec.manual';
-import './browser/HTMLImports.spec';
-import './browser/MutationObserver.spec';
-import './browser/registerElement.spec';
-import './browser/requestAnimationFrame.spec';
-import './browser/WebSocket.spec';
-import './browser/XMLHttpRequest.spec';
-import './browser/MediaQuery.spec';
-import './mocha-patch.spec';
+// import './browser/browser.spec';
+// import './browser/define-property.spec';
+// import './browser/element.spec';
+// import './browser/FileReader.spec';
+// // import './browser/geolocation.spec.manual';
+// import './browser/HTMLImports.spec';
+// import './browser/MutationObserver.spec';
+// import './browser/registerElement.spec';
+// import './browser/requestAnimationFrame.spec';
+// import './browser/WebSocket.spec';
+// import './browser/XMLHttpRequest.spec';
+// import './browser/MediaQuery.spec';
+// import './mocha-patch.spec';
