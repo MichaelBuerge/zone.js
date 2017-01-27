@@ -1318,6 +1318,7 @@ const Zone: ZoneType = (function(global: any) {
   ZoneAwarePromise['race'] = ZoneAwarePromise.race;
   ZoneAwarePromise['all'] = ZoneAwarePromise.all;
 
+
   const NativePromise = global[__symbol__('Promise')] = global['Promise'];
   global['Promise'] = ZoneAwarePromise;
   console.log('window.Promise replaced with ZoneAwarePromise');
@@ -1325,13 +1326,14 @@ const Zone: ZoneType = (function(global: any) {
   global['ZoneAwarePromise'] = ZoneAwarePromise;
   global['NativePromise'] = NativePromise
 
+  var thenSymbol = __symbol__('then');
   var thenPatchedSymbol = __symbol__('thenPatched');
 
   function patchThen(Ctor) {
     var proto = Ctor.prototype;
     var originalThen = proto.then;
     // Keep original method on original prototype.
-    proto[__symbol__('then')] = originalThen;
+    proto[thenSymbol] = originalThen;
 
     Ctor.prototype.then = function(onResolve, onReject) {
       var thisObj = this;
@@ -1343,31 +1345,28 @@ const Zone: ZoneType = (function(global: any) {
     Ctor[thenPatchedSymbol] = true;
   }
 
-  // ---------- NEW ------------------
-  var USE_NEW = 1
-  if (USE_NEW) {
-
-    function zoneify(fn) {
-      return function() {
-        var resultPromise = fn.apply(this, arguments);
-        console.log('zoneify(): resultPromise: ', resultPromise.toString());
-        var Ctor = resultPromise.constructor
-        if (Ctor == ZoneAwarePromise) {
-          return resultPromise;
-        }
-        if (!Ctor[thenPatchedSymbol]) {
-          console.log('zoneify(): patching promise result constructor');
-          patchThen(Ctor);
-        } else {
-          console.log('zoneify(): already patched')
-        }
-        return new ZoneAwarePromise(
-            function(resolve, reject) {
-              resultPromise.then(resolve, reject);
-            });
+  function zoneify(fn) {
+    return function() {
+      var resultPromise = fn.apply(this, arguments);
+      console.log('zoneify(): resultPromise: ', resultPromise.toString());
+      var Ctor = resultPromise.constructor
+      if (Ctor == ZoneAwarePromise) {
+        return resultPromise;
       }
+      if (!Ctor[thenPatchedSymbol]) {
+        console.log('zoneify(): patching promise result constructor');
+        patchThen(Ctor);
+      } else {
+        console.log('zoneify(): already patched')
+      }
+      return new ZoneAwarePromise(
+          function(resolve, reject) {
+            resultPromise.then(resolve, reject);
+          });
     }
+  }
 
+  if (NativePromise) {
     patchThen(NativePromise);
     console.log('NativePromise#then patched.');
 
@@ -1375,33 +1374,6 @@ const Zone: ZoneType = (function(global: any) {
     if (typeof fetch == 'function') {
       global['fetch'] = zoneify(fetch);
       console.log('zoneify(fetch)');
-    }
-
-
-  // -------------- OLD ---------------
-  } else {
-
-    if (NativePromise) {
-      // patchThen(NativePromise);
-      patchThen(NativePromise);
-      console.log('NativePromise#then patched.');
-
-      if (typeof global['fetch'] !== 'undefined') {
-        let fetchPromise: Promise<any>;
-        try {
-          // In MS Edge this throws
-          fetchPromise = global['fetch']();
-        } catch (e) {
-          // In Chrome this throws instead.
-          fetchPromise = global['fetch']('about:blank');
-        }
-        // ignore output to prevent error;
-        fetchPromise.then(() => null, () => null);
-        if (fetchPromise.constructor != NativePromise &&
-            fetchPromise.constructor != ZoneAwarePromise) {
-          patchThen(fetchPromise.constructor);
-        }
-      }
     }
 
   }
