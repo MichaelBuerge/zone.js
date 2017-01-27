@@ -1319,41 +1319,40 @@ const Zone: ZoneType = (function(global: any) {
   ZoneAwarePromise['all'] = ZoneAwarePromise.all;
 
 
-  const NativePromise = global[__symbol__('Promise')] = global['Promise'];
+  const NativePromise = global[symbolPromise] = global['Promise'];
   global['Promise'] = ZoneAwarePromise;
   console.log('window.Promise replaced with ZoneAwarePromise');
 
   global['ZoneAwarePromise'] = ZoneAwarePromise;
   global['NativePromise'] = NativePromise
 
-  var thenSymbol = __symbol__('then');
-  var thenPatchedSymbol = __symbol__('thenPatched');
+  let symbolThenPatched = __symbol__('thenPatched');
 
   function patchThen(Ctor) {
-    var proto = Ctor.prototype;
-    var originalThen = proto.then;
+    let proto = Ctor.prototype;
+    let originalThen = proto.then;
     // Keep original method on original prototype.
-    proto[thenSymbol] = originalThen;
+    proto[symbolThen] = originalThen;
 
     Ctor.prototype.then = function(onResolve, onReject) {
-      var thisObj = this;
+      let thisObj = this;
       return new ZoneAwarePromise(function(resolve, reject) {
             originalThen.call(thisObj, resolve, reject);
           })
           .then(onResolve, onReject);
     };
-    Ctor[thenPatchedSymbol] = true;
+    Ctor[symbolThenPatched] = true;
   }
 
   function zoneify(fn) {
     return function() {
-      var resultPromise = fn.apply(this, arguments);
+      let resultPromise = fn.apply(this, arguments);
       console.log('zoneify(): resultPromise: ', resultPromise.toString());
-      var Ctor = resultPromise.constructor
-      if (Ctor == ZoneAwarePromise) {
+      if (resultPromise instanceof ZoneAwarePromise) {
         return resultPromise;
       }
-      if (!Ctor[thenPatchedSymbol]) {
+      let Ctor = resultPromise.constructor
+      if (!Ctor[symbolThenPatched]) {
         console.log('zoneify(): patching promise result constructor');
         patchThen(Ctor);
       } else {
@@ -1370,12 +1369,11 @@ const Zone: ZoneType = (function(global: any) {
     patchThen(NativePromise);
     console.log('NativePromise#then patched.');
 
-    var fetch = global['fetch'];
+    let fetch = global['fetch'];
     if (typeof fetch == 'function') {
       global['fetch'] = zoneify(fetch);
       console.log('zoneify(fetch)');
     }
-
   }
 
   // This is not part of public API, but it is usefull for tests, so we expose it.
