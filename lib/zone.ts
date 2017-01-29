@@ -1335,11 +1335,11 @@ const Zone: ZoneType = (function(global: any) {
     proto[symbolThen] = originalThen;
 
     Ctor.prototype.then = function(onResolve, onReject) {
-      let thisObj = this;
-      return new ZoneAwarePromise(function(resolve, reject) {
-            originalThen.call(thisObj, resolve, reject);
-          })
-          .then(onResolve, onReject);
+      let wrapped = new ZoneAwarePromise(
+          (resolve, reject) => {
+            originalThen.call(this, resolve, reject);
+          });
+      return wrapped.then(onResolve, onReject);
     };
     Ctor[symbolThenPatched] = true;
   }
@@ -1358,10 +1358,7 @@ const Zone: ZoneType = (function(global: any) {
       } else {
         console.log('zoneify(): already patched')
       }
-      return new ZoneAwarePromise(
-          function(resolve, reject) {
-            resultPromise.then(resolve, reject);
-          });
+      return ZoneAwarePromise.resolve(resultPromise);
     }
   }
 
