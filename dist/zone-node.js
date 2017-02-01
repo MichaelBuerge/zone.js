@@ -18,6 +18,14 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
+/*
+ * Suppress closure compiler errors about unknown 'global' variable
+ * @fileoverview
+ * @suppress {undefinedVars}
+ */
+var probePromise = window['probePromise'] ||
+    (function () { return console.log('probePromise() not present'); });
+probePromise('before zone.js init');
 
 
 var Zone$1 = (function (global) {
@@ -105,7 +113,7 @@ var Zone$1 = (function (global) {
             };
         };
         Zone.prototype.run = function (callback, applyThis, applyArgs, source) {
-            if (applyThis === void 0) { applyThis = null; }
+            if (applyThis === void 0) { applyThis = undefined; }
             if (applyArgs === void 0) { applyArgs = null; }
             if (source === void 0) { source = null; }
             _currentZoneFrame = new ZoneFrame(_currentZoneFrame, this);
@@ -432,8 +440,8 @@ var Zone$1 = (function (global) {
                     try {
                         task.zone.runTask(task, null, null);
                     }
-                    catch (e) {
-                        consoleError(e);
+                    catch (error) {
+                        consoleError(error);
                     }
                 }
             }
@@ -445,8 +453,8 @@ var Zone$1 = (function (global) {
                             throw uncaughtPromiseError;
                         });
                     }
-                    catch (e) {
-                        consoleError(e);
+                    catch (error) {
+                        consoleError(error);
                     }
                 };
                 while (_uncaughtPromiseErrors.length) {
@@ -474,19 +482,65 @@ var Zone$1 = (function (global) {
     var REJECTED_NO_CATCH = 0;
     function makeResolver(promise, state) {
         return function (v) {
-            resolvePromise(promise, state, v);
+            try {
+                resolvePromise(promise, state, v);
+            }
+            catch (err) {
+                resolvePromise(promise, false, err);
+            }
             // Do not return value or you will break the Promise spec.
         };
     }
+    var once = function () {
+        var wasCalled = false;
+        return function wrapper(wrappedFunction) {
+            return function () {
+                if (wasCalled) {
+                    return;
+                }
+                wasCalled = true;
+                wrappedFunction.apply(null, arguments);
+            };
+        };
+    };
+    // Promise Resolution
     function resolvePromise(promise, state, value) {
+        var onceWrapper = once();
+        if (promise === value) {
+            throw new TypeError('Promise resolved with itself');
+        }
         if (promise[symbolState] === UNRESOLVED) {
-            if (value instanceof ZoneAwarePromise && value.hasOwnProperty(symbolState) &&
-                value.hasOwnProperty(symbolValue) && value[symbolState] !== UNRESOLVED) {
+            // should only get value.then once based on promise spec.
+            var then = null;
+            try {
+                if (typeof value === 'object' || typeof value === 'function') {
+                    then = value && value.then;
+                }
+            }
+            catch (err) {
+                onceWrapper(function () {
+                    resolvePromise(promise, false, err);
+                })();
+                return promise;
+            }
+            // if (value instanceof ZoneAwarePromise) {
+            if (state !== REJECTED && value instanceof ZoneAwarePromise &&
+                value.hasOwnProperty(symbolState) && value.hasOwnProperty(symbolValue) &&
+                value[symbolState] !== UNRESOLVED) {
                 clearRejectedNoCatch(value);
                 resolvePromise(promise, value[symbolState], value[symbolValue]);
             }
-            else if (isThenable(value)) {
-                value.then(makeResolver(promise, state), makeResolver(promise, false));
+            else if (state !== REJECTED && typeof then === 'function') {
+                try {
+                    then.apply(value, [
+                        onceWrapper(makeResolver(promise, state)), onceWrapper(makeResolver(promise, false))
+                    ]);
+                }
+                catch (err) {
+                    onceWrapper(function () {
+                        resolvePromise(promise, false, err);
+                    })();
+                }
             }
             else {
                 promise[symbolState] = state;
@@ -501,8 +555,8 @@ var Zone$1 = (function (global) {
                         throw new Error('Uncaught (in promise): ' + value +
                             (value && value.stack ? '\n' + value.stack : ''));
                     }
-                    catch (e) {
-                        var error_1 = e;
+                    catch (err) {
+                        var error_1 = err;
                         error_1.rejection = value;
                         error_1.promise = promise;
                         error_1.zone = Zone.current;
@@ -529,10 +583,12 @@ var Zone$1 = (function (global) {
     }
     function scheduleResolveOrReject(promise, zone, chainPromise, onFulfilled, onRejected) {
         clearRejectedNoCatch(promise);
-        var delegate = promise[symbolState] ? onFulfilled || forwardResolution : onRejected || forwardRejection;
+        var delegate = promise[symbolState] ?
+            (typeof onFulfilled === 'function') ? onFulfilled : forwardResolution :
+            (typeof onRejected === 'function') ? onRejected : forwardRejection;
         zone.scheduleMicroTask(source, function () {
             try {
-                resolvePromise(chainPromise, true, zone.run(delegate, null, [promise[symbolValue]]));
+                resolvePromise(chainPromise, true, zone.run(delegate, undefined, [promise[symbolValue]]));
             }
             catch (error) {
                 resolvePromise(chainPromise, false, error);
@@ -550,8 +606,8 @@ var Zone$1 = (function (global) {
             try {
                 executor && executor(makeResolver(promise, RESOLVED), makeResolver(promise, REJECTED));
             }
-            catch (e) {
-                resolvePromise(promise, false, e);
+            catch (error) {
+                resolvePromise(promise, false, error);
             }
         }
         ZoneAwarePromise.toString = function () {
@@ -634,38 +690,51 @@ var Zone$1 = (function (global) {
     ZoneAwarePromise['reject'] = ZoneAwarePromise.reject;
     ZoneAwarePromise['race'] = ZoneAwarePromise.race;
     ZoneAwarePromise['all'] = ZoneAwarePromise.all;
-    var NativePromise = global[__symbol__('Promise')] = global['Promise'];
+    var NativePromise = global[symbolPromise] = global['Promise'];
     global['Promise'] = ZoneAwarePromise;
-    function patchThen(NativePromise) {
-        var NativePromiseProtototype = NativePromise.prototype;
-        var NativePromiseThen = NativePromiseProtototype[__symbol__('then')] =
-            NativePromiseProtototype.then;
-        NativePromiseProtototype.then = function (onResolve, onReject) {
-            var nativePromise = this;
-            return new ZoneAwarePromise(function (resolve, reject) {
-                NativePromiseThen.call(nativePromise, resolve, reject);
-            })
-                .then(onResolve, onReject);
+    console.log('window.Promise replaced with ZoneAwarePromise');
+    global['ZoneAwarePromise'] = ZoneAwarePromise;
+    global['NativePromise'] = NativePromise;
+    var symbolThenPatched = __symbol__('thenPatched');
+    function patchThen(Ctor) {
+        var proto = Ctor.prototype;
+        var originalThen = proto.then;
+        // Keep original method on original prototype.
+        proto[symbolThen] = originalThen;
+        Ctor.prototype.then = function (onResolve, onReject) {
+            var _this = this;
+            var wrapped = new ZoneAwarePromise(function (resolve, reject) {
+                originalThen.call(_this, resolve, reject);
+            });
+            return wrapped.then(onResolve, onReject);
+        };
+        Ctor[symbolThenPatched] = true;
+    }
+    function zoneify(fn) {
+        return function () {
+            var resultPromise = fn.apply(this, arguments);
+            console.log('zoneify(): resultPromise: ', resultPromise.toString());
+            if (resultPromise instanceof ZoneAwarePromise) {
+                return resultPromise;
+            }
+            var Ctor = resultPromise.constructor;
+            if (!Ctor[symbolThenPatched]) {
+                console.log('zoneify(): patching promise result constructor');
+                patchThen(Ctor);
+            }
+            else {
+                console.log('zoneify(): already patched');
+            }
+            return resultPromise;
         };
     }
     if (NativePromise) {
         patchThen(NativePromise);
-        if (typeof global['fetch'] !== 'undefined') {
-            var fetchPromise = void 0;
-            try {
-                // In MS Edge this throws
-                fetchPromise = global['fetch']();
-            }
-            catch (e) {
-                // In Chrome this throws instead.
-                fetchPromise = global['fetch']('about:blank');
-            }
-            // ignore output to prevent error;
-            fetchPromise.then(function () { return null; }, function () { return null; });
-            if (fetchPromise.constructor != NativePromise &&
-                fetchPromise.constructor != ZoneAwarePromise) {
-                patchThen(fetchPromise.constructor);
-            }
+        console.log('NativePromise#then patched.');
+        var fetch = global['fetch'];
+        if (typeof fetch == 'function') {
+            global['fetch'] = zoneify(fetch);
+            console.log('zoneify(fetch)');
         }
     }
     // This is not part of public API, but it is usefull for tests, so we expose it.
@@ -967,7 +1036,9 @@ var Zone$1 = (function (global) {
     };
     // Cause the error to extract the stack frames.
     detectZone.runTask(detectZone.scheduleMacroTask('detect', detectRunFn, null, function () { return null; }, null));
-    return global['Zone'] = Zone;
+    global['Zone'] = Zone;
+    probePromise('after zone.js init');
+    return Zone;
 })(typeof window === 'object' && window || typeof self === 'object' && self || global);
 
 /**
@@ -984,19 +1055,16 @@ var Zone$1 = (function (global) {
  */
 var zoneSymbol = function (n) { return "__zone_symbol__" + n; };
 var _global$1 = typeof window === 'object' && window || typeof self === 'object' && self || global;
-function bindArguments(args, source) {
-    for (var i = args.length - 1; i >= 0; i--) {
-        if (typeof args[i] === 'function') {
-            args[i] = Zone.current.wrap(args[i], source + '_' + i);
-        }
-    }
-    return args;
-}
 
 
+var isWebWorker = (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope);
 var isNode = (!('nw' in _global$1) && typeof process !== 'undefined' &&
     {}.toString.call(process) === '[object process]');
 
+// we are in electron of nw, so we are both browser and nodejs
+var isMix = typeof process !== 'undefined' &&
+    {}.toString.call(process) === '[object process]' && !isWebWorker &&
+    !!(typeof window !== 'undefined' && window['HTMLElement']);
 
 
 
@@ -1116,7 +1184,7 @@ function makeZoneAwareAddListener(addFnName, removeFnName, useCapturingParam, al
             // will fail tests prematurely.
             validZoneHandler = data.handler && data.handler.toString() === '[object FunctionWrapper]';
         }
-        catch (e) {
+        catch (error) {
             // Returning nothing here is fine, because objects in a cross-site context are unusable
             return;
         }
@@ -1198,7 +1266,6 @@ function makeZoneAwareListeners(fnName) {
 var zoneAwareAddEventListener = makeZoneAwareAddListener(ADD_EVENT_LISTENER, REMOVE_EVENT_LISTENER);
 var zoneAwareRemoveEventListener = makeZoneAwareRemoveListener(REMOVE_EVENT_LISTENER);
 
-var originalInstanceKey = zoneSymbol('originalInstance');
 // wrap some native API on `window`
 
 
@@ -1206,7 +1273,7 @@ function createNamedFn(name, delegate) {
     try {
         return (Function('f', "return function " + name + "(){return f(this, arguments)}"))(delegate);
     }
-    catch (e) {
+    catch (error) {
         // if we fail, we must be CSP, just return delegate.
         return function () {
             return delegate(this, arguments);
@@ -1274,16 +1341,16 @@ var EE_REMOVE_LISTENER = 'removeListener';
 var EE_REMOVE_ALL_LISTENER = 'removeAllListeners';
 var EE_LISTENERS = 'listeners';
 var EE_ON = 'on';
-var zoneAwareAddListener$1 = callAndReturnFirstParam(makeZoneAwareAddListener(EE_ADD_LISTENER, EE_REMOVE_LISTENER, false, true, false));
+var zoneAwareAddListener = callAndReturnFirstParam(makeZoneAwareAddListener(EE_ADD_LISTENER, EE_REMOVE_LISTENER, false, true, false));
 var zoneAwarePrependListener = callAndReturnFirstParam(makeZoneAwareAddListener(EE_PREPEND_LISTENER, EE_REMOVE_LISTENER, false, true, true));
-var zoneAwareRemoveListener$1 = callAndReturnFirstParam(makeZoneAwareRemoveListener(EE_REMOVE_LISTENER, false));
+var zoneAwareRemoveListener = callAndReturnFirstParam(makeZoneAwareRemoveListener(EE_REMOVE_LISTENER, false));
 var zoneAwareRemoveAllListeners = callAndReturnFirstParam(makeZoneAwareRemoveAllListeners(EE_REMOVE_ALL_LISTENER, false));
 var zoneAwareListeners = makeZoneAwareListeners(EE_LISTENERS);
 function patchEventEmitterMethods(obj) {
     if (obj && obj.addListener) {
-        patchMethod(obj, EE_ADD_LISTENER, function () { return zoneAwareAddListener$1; });
+        patchMethod(obj, EE_ADD_LISTENER, function () { return zoneAwareAddListener; });
         patchMethod(obj, EE_PREPEND_LISTENER, function () { return zoneAwarePrependListener; });
-        patchMethod(obj, EE_REMOVE_LISTENER, function () { return zoneAwareRemoveListener$1; });
+        patchMethod(obj, EE_REMOVE_LISTENER, function () { return zoneAwareRemoveListener; });
         patchMethod(obj, EE_REMOVE_ALL_LISTENER, function () { return zoneAwareRemoveAllListeners; });
         patchMethod(obj, EE_LISTENERS, function () { return zoneAwareListeners; });
         obj[EE_ON] = obj[EE_ADD_LISTENER];
@@ -1439,55 +1506,19 @@ try {
 }
 catch (err) {
 }
-// TODO(gdi2290): implement a better way to patch these methods
+// use the generic patchMacroTask to patch crypto
 if (crypto) {
-    var nativeRandomBytes_1 = crypto.randomBytes;
-    crypto.randomBytes = function randomBytesZone(size, callback) {
-        if (!callback) {
-            return nativeRandomBytes_1(size);
-        }
-        else {
-            var zone = Zone.current;
-            var source = crypto.constructor.name + '.randomBytes';
-            return nativeRandomBytes_1(size, zone.wrap(callback, source));
-        }
-    }.bind(crypto);
-    var nativePbkdf2_1 = crypto.pbkdf2;
-    crypto.pbkdf2 = function pbkdf2Zone() {
-        var args = [];
-        for (var _i = 0; _i < arguments.length; _i++) {
-            args[_i] = arguments[_i];
-        }
-        var fn = args[args.length - 1];
-        if (typeof fn === 'function') {
-            var zone = Zone.current;
-            var source = crypto.constructor.name + '.pbkdf2';
-            args[args.length - 1] = zone.wrap(fn, source);
-            return nativePbkdf2_1.apply(void 0, args);
-        }
-        else {
-            return nativePbkdf2_1.apply(void 0, args);
-        }
-    }.bind(crypto);
-}
-// HTTP Client
-var httpClient;
-try {
-    httpClient = require('_http_client');
-}
-catch (err) {
-}
-if (httpClient && httpClient.ClientRequest) {
-    var ClientRequest_1 = httpClient.ClientRequest.bind(httpClient);
-    httpClient.ClientRequest = function (options, callback) {
-        if (!callback) {
-            return new ClientRequest_1(options);
-        }
-        else {
-            var zone = Zone.current;
-            return new ClientRequest_1(options, zone.wrap(callback, 'http.ClientRequest'));
-        }
-    };
+    var methodNames = ['randomBytes', 'pbkdf2'];
+    methodNames.forEach(function (name) {
+        patchMacroTask(crypto, name, function (self, args) {
+            return {
+                name: 'crypto.' + name,
+                args: args,
+                callbackIndex: (args.length > 0 && typeof args[args.length - 1] === 'function') ? args.length - 1 : -1,
+                target: crypto
+            };
+        });
+    });
 }
 function patchNextTick() {
     var setNative = null;

@@ -5,6 +5,7 @@
  * Use of this source code is governed by an MIT-style license that can be
  * found in the LICENSE file at https://angular.io/license
  */
+declare var probePromise: any;
 /**
  * Zone is a mechanism for intercepting and keeping track of asynchronous work.
  *
