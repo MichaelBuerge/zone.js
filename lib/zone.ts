@@ -1358,7 +1358,7 @@ const Zone: ZoneType = (function(global: any) {
       } else {
         console.log('zoneify(): already patched')
       }
-      return ZoneAwarePromise.resolve(resultPromise);
+      return resultPromise;
     }
   }
 
